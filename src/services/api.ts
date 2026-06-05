@@ -42,6 +42,8 @@ export const usersService = {
     if (!payload) return Promise.reject(new Error('Token inválido'))
     return api.get<{ data: User }>(`/users/${payload.id}`)
   },
+  getById: (id: string) =>
+    api.get<{ data: User }>(`/users/${id}`),
   update: (data: Partial<Omit<User, 'id' | 'created_at' | 'is_verified'>> & { password?: string }) => {
     const payload = getTokenPayload()
     if (!payload) return Promise.reject(new Error('Token inválido'))
@@ -72,6 +74,9 @@ export const listingsService = {
 
   remove: (id: string) =>
     api.delete(`/listings/${id}`),
+
+  incrementView: (id: string) =>
+    api.post(`/listings/${id}/view`),
 }
 
 export const listingImagesService = {

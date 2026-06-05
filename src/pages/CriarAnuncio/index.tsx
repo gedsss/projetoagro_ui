@@ -1,46 +1,46 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, CheckCircle, ImagePlus, Loader2, X } from 'lucide-react'
 import { listingImagesService, listingsService } from '../../services/api'
+import { fipeService, type FipeMarca, type FipeModelo, type FipeAno, type FipePreco } from '../../services/fipe'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const STATES = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 const MAX_IMAGES = 10
 const YEAR_NOW = new Date().getFullYear()
-const STEP_LABELS = ['Tipo', 'Veículo', 'Opcionais', 'Anúncio', 'Fotos']
+const STEP_LABELS = ['Tipo', 'Veículo', 'Opcionais', 'Anúncio', 'Fotos', 'Revisão']
 
 const CATEGORIES = [
-  { value: 'sedans', label: 'Sedan' },
-  { value: 'suvs', label: 'SUV' },
-  { value: 'pickups', label: 'Pickup' },
-  { value: 'motos', label: 'Moto' },
-  { value: 'classicos', label: 'Clássico' },
-  { value: 'vans', label: 'Van / Utilitário' },
-  { value: 'caminhoes', label: 'Caminhão' },
-  { value: 'outros', label: 'Outros' },
+  { value: 'SEDANS', label: 'Sedan' },
+  { value: 'SUVS', label: 'SUV' },
+  { value: 'PICKUPS', label: 'Pickup' },
+  { value: 'MOTOS', label: 'Moto' },
+  { value: 'CLASSICOS', label: 'Coupé' },
+  { value: 'VANS', label: 'Van / Utilitário' },
+  { value: 'OUTROS', label: 'Outros' },
 ]
 
 const CONDITIONS = [
-  { value: 'novo', label: 'Novo' },
-  { value: 'seminovo', label: 'Seminovo' },
-  { value: 'usado', label: 'Usado' },
+  { value: 'NOVO', label: 'Novo' },
+  { value: 'SEMINOVO', label: 'Seminovo' },
+  { value: 'USADO', label: 'Usado' },
 ]
 
 const FUELS = [
-  { value: 'flex', label: 'Flex' },
-  { value: 'gasolina', label: 'Gasolina' },
-  { value: 'etanol', label: 'Etanol' },
-  { value: 'diesel', label: 'Diesel' },
-  { value: 'eletrico', label: 'Elétrico' },
-  { value: 'hibrido', label: 'Híbrido' },
+  { value: 'FLEX', label: 'Flex' },
+  { value: 'GASOLINA', label: 'Gasolina' },
+  { value: 'ETANOL', label: 'Etanol' },
+  { value: 'DIESEL', label: 'Diesel' },
+  { value: 'ELETRICO', label: 'Elétrico' },
+  { value: 'HIBRIDO', label: 'Híbrido' },
 ]
 
 const TRANSMISSIONS = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'automatico', label: 'Automático' },
-  { value: 'cvt', label: 'CVT' },
-  { value: 'automatizado', label: 'Automatizado' },
+  { value: 'MANUAL', label: 'Manual' },
+  { value: 'AUTOMATICO', label: 'Automático' },
+  { value: 'CVT', label: 'CVT' },
+  { value: 'AUTOMATIZADO', label: 'Automatizado' },
 ]
 
 const COLORS = ['Branco','Preto','Prata','Cinza','Vermelho','Azul','Verde','Amarelo','Laranja','Bege','Marrom','Roxo','Dourado','Outro']
@@ -179,6 +179,12 @@ const MECHANIC_OPT = [
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+function getFipeTipo(category: string): string {
+  if (category === 'MOTOS') return 'motos'
+  if (category === 'CAMINHOES' || category === 'VANS') return 'caminhoes'
+  return 'carros'
+}
+
 function getTokenId(): string | null {
   const token = localStorage.getItem('token')
   if (!token) return null
@@ -198,8 +204,20 @@ function maskCEP(v: string) {
   return v.replace(/\D/g, '').slice(0, 8).replace(/(\d{5})(\d)/, '$1-$2')
 }
 
+function maskKM(v: string) {
+  return v.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+}
+
+function maskYear(v: string) {
+  return v.replace(/\D/g, '').slice(0, 4)
+}
+
 function toggleArr(arr: string[], val: string) {
   return arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val]
+}
+
+function formatBRL(value: number) {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -239,6 +257,15 @@ function Toggle({ id, label, description, checked, onChange }: {
   )
 }
 
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-[#1e2040] last:border-0">
+      <span className="text-xs text-white/50">{label}</span>
+      <span className="text-sm font-medium text-[#e8e8f4]">{value}</span>
+    </div>
+  )
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface ImageItem {
@@ -272,6 +299,18 @@ export default function CriarAnuncio() {
   const [technology, setTechnology] = useState<string[]>([])
   const [mechanic, setMechanic] = useState<string[]>([])
 
+  // FIPE state
+  const [fipeMarcas, setFipeMarcas] = useState<FipeMarca[]>([])
+  const [fipeModelos, setFipeModelos] = useState<FipeModelo[]>([])
+  const [fipeAnos, setFipeAnos] = useState<FipeAno[]>([])
+  const [fipePreco, setFipePreco] = useState<FipePreco | null>(null)
+  const [fipeSel, setFipeSel] = useState({ codMarca: '', codModelo: '', codAno: '' })
+  const [fipeLoading, setFipeLoading] = useState(false)
+
+  // Cities (IBGE)
+  const [cities, setCities] = useState<string[]>([])
+  const [citiesLoading, setCitiesLoading] = useState(false)
+
   const [form, setForm] = useState({
     category: '', condition: '', bullet_proof: false, auction: false,
     brand: '', model: '', popular_name: '', plate: '', fipe_code: '',
@@ -279,12 +318,95 @@ export default function CriarAnuncio() {
     transmission: '', doors: '', engine_cc: '', color: '',
     title: '', description: '', observation: '',
     price: '', price_negotiable: true, accepts_trade: false,
-    city: '', state: 'SP', cep: '',
+    city: '', state: '', cep: '',
   })
 
   function set(field: string, value: string | boolean) {
     setForm(prev => ({ ...prev, [field]: value }))
     setError('')
+  }
+
+  // Carrega marcas ao entrar no step 1
+  useEffect(() => {
+    if (step !== 1 || !form.category) return
+    const tipo = getFipeTipo(form.category)
+    setFipeLoading(true)
+    fipeService.getMarcas(tipo)
+      .then(setFipeMarcas)
+      .catch(() => {})
+      .finally(() => setFipeLoading(false))
+  }, [step, form.category])
+
+  // Carrega cidades do estado via IBGE
+  useEffect(() => {
+    if (!form.state) {
+      setCities([])
+      setForm(prev => ({ ...prev, city: '' }))
+      return
+    }
+    setCitiesLoading(true)
+    setForm(prev => ({ ...prev, city: '' }))
+    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${form.state}/municipios?orderBy=nome`)
+      .then(r => r.json())
+      .then((data: { nome: string }[]) => setCities(data.map(c => c.nome)))
+      .catch(() => setCities([]))
+      .finally(() => setCitiesLoading(false))
+  }, [form.state])
+
+  // Carrega modelos ao selecionar marca
+  async function handleMarcaChange(codMarca: string) {
+    const tipo = getFipeTipo(form.category)
+    const marca = fipeMarcas.find(m => m.codigo === codMarca)
+    setFipeSel({ codMarca, codModelo: '', codAno: '' })
+    setFipeModelos([])
+    setFipeAnos([])
+    setFipePreco(null)
+    set('brand', marca?.nome ?? '')
+    set('model', '')
+    set('fipe_code', '')
+    if (!codMarca) return
+    setFipeLoading(true)
+    fipeService.getModelos(tipo, codMarca)
+      .then(setFipeModelos)
+      .catch(() => {})
+      .finally(() => setFipeLoading(false))
+  }
+
+  // Carrega anos ao selecionar modelo
+  async function handleModeloChange(codModelo: string) {
+    const tipo = getFipeTipo(form.category)
+    const modelo = fipeModelos.find(m => String(m.codigo) === codModelo)
+    setFipeSel(prev => ({ ...prev, codModelo, codAno: '' }))
+    setFipeAnos([])
+    setFipePreco(null)
+    set('model', modelo?.nome ?? '')
+    set('fipe_code', '')
+    if (!codModelo) return
+    setFipeLoading(true)
+    fipeService.getAnos(tipo, fipeSel.codMarca, codModelo)
+      .then(setFipeAnos)
+      .catch(() => {})
+      .finally(() => setFipeLoading(false))
+  }
+
+  // Busca preço ao selecionar ano
+  async function handleAnoChange(codAno: string) {
+    const tipo = getFipeTipo(form.category)
+    const ano = fipeAnos.find(a => a.codigo === codAno)
+    const yearNum = ano ? parseInt(ano.nome) : YEAR_NOW
+    setFipeSel(prev => ({ ...prev, codAno }))
+    setFipePreco(null)
+    set('year_model', String(yearNum))
+    set('fipe_code', '')
+    if (!codAno) return
+    setFipeLoading(true)
+    fipeService.getPreco(tipo, fipeSel.codMarca, fipeSel.codModelo, codAno)
+      .then(preco => {
+        setFipePreco(preco)
+        set('fipe_code', preco.CodigoFipe)
+      })
+      .catch(() => {})
+      .finally(() => setFipeLoading(false))
   }
 
   function validateStep(): string {
@@ -293,8 +415,8 @@ export default function CriarAnuncio() {
       if (!form.condition) return 'Selecione a condição do veículo'
     }
     if (step === 1) {
-      if (!form.brand.trim()) return 'Informe a marca'
-      if (!form.model.trim()) return 'Informe o modelo'
+      if (!form.brand.trim()) return 'Selecione ou informe a marca'
+      if (!form.model.trim()) return 'Selecione ou informe o modelo'
       if (!form.plate.trim()) return 'Informe a placa'
       if (form.plate.length !== 7) return 'Placa deve ter 7 caracteres (ex: ABC1D23)'
       if (!form.fuel) return 'Selecione o combustível'
@@ -303,7 +425,8 @@ export default function CriarAnuncio() {
     if (step === 3) {
       if (!form.title.trim()) return 'Informe o título do anúncio'
       if (!form.price) return 'Informe o preço'
-      if (!form.city.trim()) return 'Informe a cidade'
+      if (!form.state) return 'Selecione o estado'
+      if (!form.city) return 'Selecione a cidade'
     }
     return ''
   }
@@ -366,8 +489,6 @@ export default function CriarAnuncio() {
   }
 
   async function handleSubmit() {
-    const err = validateStep()
-    if (err) { setError(err); return }
     const sellerId = getTokenId()
     if (!sellerId) { navigate('/login'); return }
 
@@ -409,16 +530,18 @@ export default function CriarAnuncio() {
         comfort_components: comfort,
         technology_components: technology,
         mechanic_components: mechanic,
-        status: 'ativo',
+        status: 'ATIVO',
       })
 
       const listingId = res.data.data.id
       await Promise.all(imageUrls.map((url, i) => listingImagesService.create(listingId, url, i)))
       setSuccess(true)
-      setTimeout(() => navigate('/perfil'), 1800)
+      setTimeout(() => navigate('/perfil?tab=listings'), 1800)
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      setError(e?.response?.data?.message ?? (err as Error)?.message ?? 'Erro ao criar anúncio.')
+      console.error('[CriarAnuncio] erro ao criar:', err)
+      const e = err as { response?: { data?: { message?: string | string[] } }; message?: string }
+      const msg = e?.response?.data?.message
+      setError(Array.isArray(msg) ? msg.join(', ') : msg ?? (err as Error)?.message ?? 'Erro ao criar anúncio.')
     } finally {
       setLoading(false)
     }
@@ -499,18 +622,78 @@ export default function CriarAnuncio() {
       {/* ── Step 1: Veículo ── */}
       {step === 1 && (
         <div className="space-y-5">
+          {/* FIPE cascading dropdowns */}
+          <div className={cardClass}>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Busca FIPE</p>
+              {fipeLoading && <Loader2 size={13} className="text-[#00e5cc] animate-spin" />}
+            </div>
+
+            <div>
+              <label className={labelClass}>Marca</label>
+              <select
+                value={fipeSel.codMarca}
+                onChange={e => handleMarcaChange(e.target.value)}
+                className={`${inputClass} appearance-none`}
+              >
+                <option value="">Selecione a marca...</option>
+                {fipeMarcas.map(m => (
+                  <option key={m.codigo} value={m.codigo}>{m.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            {fipeSel.codMarca && (
+              <div>
+                <label className={labelClass}>Modelo</label>
+                <select
+                  value={fipeSel.codModelo}
+                  onChange={e => handleModeloChange(e.target.value)}
+                  className={`${inputClass} appearance-none`}
+                  disabled={fipeModelos.length === 0}
+                >
+                  <option value="">Selecione o modelo...</option>
+                  {fipeModelos.map(m => (
+                    <option key={m.codigo} value={String(m.codigo)}>{m.nome}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {fipeSel.codModelo && (
+              <div>
+                <label className={labelClass}>Ano / Versão</label>
+                <select
+                  value={fipeSel.codAno}
+                  onChange={e => handleAnoChange(e.target.value)}
+                  className={`${inputClass} appearance-none`}
+                  disabled={fipeAnos.length === 0}
+                >
+                  <option value="">Selecione o ano...</option>
+                  {fipeAnos.map(a => (
+                    <option key={a.codigo} value={a.codigo}>{a.nome}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {fipePreco && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#00e5cc0d] border border-[#00e5cc25]">
+                <div>
+                  <p className="text-xs text-white/50">Preço FIPE ({fipePreco.MesReferencia})</p>
+                  <p className="text-lg font-bold text-[#00e5cc]">{fipePreco.Valor}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-white/40">Código FIPE</p>
+                  <p className="text-sm font-mono text-white/70">{fipePreco.CodigoFipe}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Manual fields (pre-filled by FIPE or editable) */}
           <div className={cardClass}>
             <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Identificação</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="brand" className={labelClass}>Marca *</label>
-                <input id="brand" type="text" placeholder="Ex: Honda" value={form.brand} onChange={e => set('brand', e.target.value)} className={inputClass} />
-              </div>
-              <div>
-                <label htmlFor="model" className={labelClass}>Modelo *</label>
-                <input id="model" type="text" placeholder="Ex: Civic EXL" value={form.model} onChange={e => set('model', e.target.value)} className={inputClass} />
-              </div>
-            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="popular_name" className={labelClass}>Nome popular</label>
@@ -529,10 +712,6 @@ export default function CriarAnuncio() {
                 />
               </div>
             </div>
-            <div>
-              <label htmlFor="fipe_code" className={labelClass}>Código FIPE</label>
-              <input id="fipe_code" type="text" placeholder="Opcional" value={form.fipe_code} onChange={e => set('fipe_code', e.target.value)} className={inputClass} maxLength={20} />
-            </div>
           </div>
 
           <div className={cardClass}>
@@ -540,21 +719,25 @@ export default function CriarAnuncio() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
                 <label htmlFor="year_model" className={labelClass}>Ano modelo *</label>
-                <input id="year_model" type="number" min={1950} max={YEAR_NOW + 2} value={form.year_model} onChange={e => set('year_model', e.target.value)} className={inputClass} />
+                <input id="year_model" type="text" inputMode="numeric" maxLength={4} placeholder={String(YEAR_NOW)} value={form.year_model} onChange={e => set('year_model', maskYear(e.target.value))} className={inputClass} />
               </div>
               <div>
                 <label htmlFor="year_manuf" className={labelClass}>Ano fabricação</label>
-                <input id="year_manuf" type="number" min={1950} max={YEAR_NOW + 2} placeholder="Opcional" value={form.year_manuf} onChange={e => set('year_manuf', e.target.value)} className={inputClass} />
+                <input id="year_manuf" type="text" inputMode="numeric" maxLength={4} placeholder="Opcional" value={form.year_manuf} onChange={e => set('year_manuf', maskYear(e.target.value))} className={inputClass} />
               </div>
               <div>
                 <label htmlFor="km" className={labelClass}>Quilometragem</label>
-                <input id="km" type="number" min={0} placeholder="Ex: 45000" value={form.km} onChange={e => set('km', e.target.value)} className={inputClass} />
+                <input id="km" type="text" inputMode="numeric" placeholder="Ex: 45.000 km" value={form.km ? `${maskKM(form.km)} km` : ''} onChange={e => set('km', e.target.value.replace(/\D/g, ''))} className={inputClass} />
               </div>
             </div>
-            <div>
+            {form.category === 'MOTOS' && (<div>
               <label htmlFor="engine_cc" className={labelClass}>Cilindradas (cc)</label>
               <input id="engine_cc" type="number" min={0} placeholder="Ex: 1600" value={form.engine_cc} onChange={e => set('engine_cc', e.target.value)} className={inputClass} />
-            </div>
+            </div>)}
+            {form.category !== 'MOTOS' && (<div>
+              <label htmlFor="engine_cc" className={labelClass}>Cavalos (cv)</label>
+              <input id="engine_cc" type="number" min={0} placeholder="Ex: 120" value={form.engine_cc} onChange={e => set('engine_cc', e.target.value)} className={inputClass} />
+            </div>)}
           </div>
 
           <div className={cardClass}>
@@ -651,7 +834,7 @@ export default function CriarAnuncio() {
             <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Preço</p>
             <div>
               <label htmlFor="price" className={labelClass}>Valor (R$) *</label>
-              <input id="price" type="number" min={0} placeholder="Ex: 85000" value={form.price} onChange={e => set('price', e.target.value)} className={inputClass} />
+              <input id="price" type="text" inputMode="numeric" placeholder="Ex: 85.000" value={form.price ? maskKM(form.price) : ''} onChange={e => set('price', e.target.value.replace(/\D/g, ''))} className={inputClass} />
             </div>
             <div className="flex flex-col gap-2">
               <Toggle id="price_negotiable" label="Preço negociável" checked={form.price_negotiable} onChange={v => set('price_negotiable', v)} />
@@ -663,13 +846,30 @@ export default function CriarAnuncio() {
             <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Localização</p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="city" className={labelClass}>Cidade *</label>
-                <input id="city" type="text" placeholder="Ex: São Paulo" value={form.city} onChange={e => set('city', e.target.value)} className={inputClass} />
+                <label htmlFor="state" className={labelClass}>Estado *</label>
+                <select
+                  id="state"
+                  value={form.state}
+                  onChange={e => set('state', e.target.value)}
+                  className={`${inputClass} appearance-none`}
+                >
+                  <option value="">Selecione o estado...</option>
+                  {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
               </div>
               <div>
-                <label htmlFor="state" className={labelClass}>Estado *</label>
-                <select id="state" value={form.state} onChange={e => set('state', e.target.value)} className={`${inputClass} appearance-none`}>
-                  {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                <label htmlFor="city" className={labelClass}>Cidade *</label>
+                <select
+                  id="city"
+                  value={form.city}
+                  onChange={e => set('city', e.target.value)}
+                  disabled={!form.state || citiesLoading}
+                  className={`${inputClass} appearance-none disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  <option value="">
+                    {citiesLoading ? 'Carregando...' : form.state ? 'Selecione a cidade...' : 'Selecione o estado primeiro'}
+                  </option>
+                  {cities.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
             </div>
@@ -733,6 +933,69 @@ export default function CriarAnuncio() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Step 5: Revisão ── */}
+      {step === 5 && (
+        <div className="space-y-5">
+          {/* FIPE card */}
+          {fipePreco && (
+            <div className={cardClass}>
+              <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Tabela FIPE</p>
+              <div className="flex items-center justify-between p-4 rounded-xl bg-[#00e5cc0d] border border-[#00e5cc25] mb-2">
+                <div>
+                  <p className="text-xs text-white/40 mb-0.5">Preço referência ({fipePreco.MesReferencia})</p>
+                  <p className="text-2xl font-bold text-[#00e5cc]">{fipePreco.Valor}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-white/40 mb-0.5">Código FIPE</p>
+                  <p className="text-sm font-mono text-white/70">{fipePreco.CodigoFipe}</p>
+                </div>
+              </div>
+              <ReviewRow label="Marca" value={fipePreco.Marca} />
+              <ReviewRow label="Modelo" value={fipePreco.Modelo} />
+              <ReviewRow label="Ano" value={String(fipePreco.AnoModelo)} />
+              <ReviewRow label="Combustível" value={fipePreco.Combustivel} />
+            </div>
+          )}
+
+          {/* Preço e placa */}
+          <div className={cardClass}>
+            <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Dados do anúncio</p>
+
+            {fipePreco && form.price && (
+              <div className="grid grid-cols-2 gap-3 mb-2">
+                <div className="p-3 rounded-xl bg-[#0c0e1a] border border-[#1e2040] text-center">
+                  <p className="text-[10px] text-white/40 mb-1">Preço FIPE</p>
+                  <p className="text-sm font-semibold text-[#00e5cc]">{fipePreco.Valor}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#0c0e1a] border border-[#1e2040] text-center">
+                  <p className="text-[10px] text-white/40 mb-1">Seu preço</p>
+                  <p className="text-sm font-semibold text-[#e8e8f4]">{formatBRL(parseFloat(form.price))}</p>
+                </div>
+              </div>
+            )}
+
+            <ReviewRow label="Placa" value={form.plate.toUpperCase()} />
+            <ReviewRow label="Preço pedido" value={form.price ? formatBRL(parseFloat(form.price)) : '—'} />
+            <ReviewRow label="Negociável" value={form.price_negotiable ? 'Sim' : 'Não'} />
+            <ReviewRow label="Aceita troca" value={form.accepts_trade ? 'Sim' : 'Não'} />
+            <ReviewRow label="Localização" value={`${form.city} / ${form.state}`} />
+          </div>
+
+          {/* Veículo */}
+          <div className={cardClass}>
+            <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Veículo</p>
+            <ReviewRow label="Marca" value={form.brand} />
+            <ReviewRow label="Modelo" value={form.model} />
+            <ReviewRow label="Ano modelo" value={form.year_model} />
+            {form.color && <ReviewRow label="Cor" value={form.color} />}
+            {form.km && <ReviewRow label="Quilometragem" value={`${parseInt(form.km).toLocaleString('pt-BR')} km`} />}
+            <ReviewRow label="Combustível" value={FUELS.find(f => f.value === form.fuel)?.label ?? form.fuel} />
+            <ReviewRow label="Câmbio" value={TRANSMISSIONS.find(t => t.value === form.transmission)?.label ?? form.transmission} />
+            <ReviewRow label="Fotos" value={`${images.length} foto${images.length !== 1 ? 's' : ''}`} />
+          </div>
         </div>
       )}
 

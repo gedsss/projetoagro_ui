@@ -31,6 +31,85 @@
   }
 }
 
+/* ── Light theme ────────────────────────────────────────────────────────────── */
+
+html.light body {
+  background-color: #f5f7fc;
+  color: #07080e;
+}
+
+html.light ::-webkit-scrollbar-track { background: #e4e8f4; }
+html.light ::-webkit-scrollbar-thumb { background: #c0c8dc; }
+
+html.light input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 100px #eef0f8 inset;
+  -webkit-text-fill-color: #07080e;
+}
+
+/* backgrounds */
+html.light .bg-\[\#000000\] { background-color: #f5f7fc; }
+html.light .bg-\[\#07080e\] { background-color: #eaecf4; }
+html.light .bg-\[\#0c0e1a\] { background-color: #eef0f8; }
+html.light .bg-\[\#1e2040\] { background-color: #dde2ee; }
+html.light .bg-\[\#252847\] { background-color: #d5dbe9; }
+html.light .bg-\[\#2e3060\] { background-color: #ccd2e2; }
+
+/* text */
+html.light .text-\[\#e8e8f4\] { color: #07080e; }
+
+/* borders */
+html.light .border-\[\#1e2040\] { border-color: #ced4e4; }
+html.light .border-\[\#2e3060\] { border-color: #b8c0d4; }
+
+/* text-white opacity classes → dark equivalents */
+html.light .text-white { color: #07080e; }
+html.light .text-white\/70 { color: rgb(7 8 14 / 0.75); }
+html.light .text-white\/60 { color: rgb(7 8 14 / 0.65); }
+html.light .text-white\/50 { color: rgb(7 8 14 / 0.55); }
+html.light .text-white\/40 { color: rgb(7 8 14 / 0.45); }
+html.light .text-white\/30 { color: rgb(7 8 14 / 0.35); }
+html.light .text-white\/20 { color: rgb(7 8 14 / 0.25); }
+html.light .text-white\/10 { color: rgb(7 8 14 / 0.15); }
+
+/* bg-white opacity */
+html.light .bg-white\/30 { background-color: rgb(7 8 14 / 0.07); }
+html.light .bg-white\/20 { background-color: rgb(7 8 14 / 0.05); }
+html.light .bg-white\/5  { background-color: rgb(7 8 14 / 0.04); }
+html.light .bg-white\/4  { background-color: rgb(7 8 14 / 0.03); }
+html.light .bg-white\/2  { background-color: rgb(7 8 14 / 0.02); }
+
+/* border-white opacity */
+html.light .border-white\/5 { border-color: rgb(7 8 14 / 0.1); }
+
+/* inputs / selects */
+html.light input, html.light select, html.light textarea {
+  color: #07080e;
+}
+html.light input::placeholder, html.light textarea::placeholder {
+  color: rgb(7 8 14 / 0.35);
+}
+
+/* glass utility */
+html.light .glass {
+  background: rgba(245, 247, 252, 0.88) !important;
+  border-color: rgba(7, 8, 14, 0.08) !important;
+}
+
+/* grid-bg - soften grid lines for light */
+html.light .grid-bg {
+  background-image:
+    linear-gradient(rgba(7, 8, 14, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(7, 8, 14, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* glow */
+html.light .glow {
+  box-shadow: 0 0 30px rgba(0, 229, 204, 0.08), 0 0 60px rgba(0, 229, 204, 0.03);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 @layer utilities {
   .glass {
     background: rgba(12, 14, 26, 0.7);

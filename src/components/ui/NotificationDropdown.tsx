@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Bell, MessageCircle } from 'lucide-react'
 
 import type { NotificationItem } from '../../types/api'
@@ -45,11 +45,6 @@ export function NotificationDropdown({ count, recent, onClose, onMarkRead, onRef
     navigate(`/anuncios/${notif.listing_id}#comment-${notif.id}`)
   }
 
-  function handleViewAll() {
-    onMarkRead()
-    onClose()
-    navigate('/perfil?tab=notifications')
-  }
 
   return (
     <div
@@ -111,7 +106,14 @@ export function NotificationDropdown({ count, recent, onClose, onMarkRead, onRef
                   <span className="text-xs font-semibold text-[#e8e8f4] truncate">{notif.author.name}</span>
                   <span className="text-[10px] text-white/40 shrink-0">{timeAgo(notif.created_at)}</span>
                 </div>
-                <p className="text-[11px] text-white/40 truncate">{notif.listing_title}</p>
+                <p className="text-[11px] text-white/40 truncate">
+                  {notif.notification_type === 'reply'
+                    ? 'Respondeu seu comentário'
+                    : notif.listing_title}
+                </p>
+                {notif.notification_type === 'reply' && notif.parent_body && (
+                  <p className="text-[11px] text-white/30 truncate italic mt-0.5">"{notif.parent_body}"</p>
+                )}
                 <p className="text-xs text-white/60 mt-0.5 line-clamp-2 leading-relaxed">{notif.body}</p>
               </div>
 
@@ -125,14 +127,14 @@ export function NotificationDropdown({ count, recent, onClose, onMarkRead, onRef
 
       {/* Footer */}
       <div className="border-t border-[#1e2040] px-4 py-2.5">
-        <button
-          type="button"
-          onClick={handleViewAll}
+        <Link
+          to="/perfil?tab=notifications"
+          onClick={() => { onMarkRead(); onClose() }}
           className="w-full flex items-center justify-center gap-1.5 text-xs text-[#00e5cc] hover:text-[#00c8b4] transition-colors py-1"
         >
           <MessageCircle size={12} />
           Ver todas as notificações
-        </button>
+        </Link>
       </div>
     </div>
   )

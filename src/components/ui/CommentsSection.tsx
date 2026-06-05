@@ -20,13 +20,21 @@ function timeAgo(date: string) {
 interface ReplyBoxProps {
   listingId: string
   parentId: string
+  initialBody?: string
   onSubmit: (comment: Comment) => void
   onCancel: () => void
 }
 
-function ReplyBox({ listingId, parentId, onSubmit, onCancel }: ReplyBoxProps) {
-  const [body, setBody] = useState('')
+function ReplyBox({ listingId, parentId, initialBody = '', onSubmit, onCancel }: ReplyBoxProps) {
+  const [body, setBody] = useState(initialBody)
   const [loading, setLoading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!inputRef.current) return
+    inputRef.current.focus()
+    inputRef.current.setSelectionRange(initialBody.length, initialBody.length)
+  }, [initialBody])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -43,15 +51,24 @@ function ReplyBox({ listingId, parentId, onSubmit, onCancel }: ReplyBoxProps) {
     <form onSubmit={handleSubmit} className="mt-2 ml-8">
       <div className="flex gap-2">
         <input
+          ref={inputRef}
           value={body}
           onChange={e => setBody(e.target.value)}
           placeholder="Escreva sua resposta..."
           className="flex-1 bg-[#07080e] border border-[#1e2040] rounded-lg px-3 py-2 text-sm text-[#e8e8f4] placeholder-white/30 focus:border-[#00e5cc55] focus:outline-none"
         />
-        <button type="submit" disabled={loading || !body.trim()} className="px-3 py-2 bg-[#00e5cc] text-[#07080e] rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-[#00c8b4] transition-colors">
+        <button
+          type="submit"
+          disabled={loading || !body.trim()}
+          className="px-3 py-2 bg-[#00e5cc] text-[#07080e] rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-[#00c8b4] transition-colors"
+        >
           <Send size={14} />
         </button>
-        <button type="button" onClick={onCancel} className="px-3 py-2 border border-[#1e2040] text-white/60 rounded-lg text-sm hover:text-white transition-colors">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-2 border border-[#1e2040] text-white/60 rounded-lg text-sm hover:text-white transition-colors"
+        >
           Cancelar
         </button>
       </div>
@@ -71,7 +88,7 @@ interface CommentItemProps {
 function CommentItem({ comment, listingId, sellerId, currentUserId, isHighlighted, onReplyAdded }: CommentItemProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [replyOpen, setReplyOpen] = useState(false)
-  const isSeller = currentUserId === sellerId
+  const [replyInitialBody, setReplyInitialBody] = useState('')
   const isAuthorSeller = comment.author_id === sellerId
 
   useEffect(() => {
@@ -80,12 +97,20 @@ function CommentItem({ comment, listingId, sellerId, currentUserId, isHighlighte
     }
   }, [isHighlighted])
 
+  function openReply(prefillName?: string) {
+    setReplyInitialBody(prefillName ? `@${prefillName} ` : '')
+    setReplyOpen(true)
+  }
+
   return (
     <div
       id={`comment-${comment.id}`}
       ref={ref}
-      className={`space-y-3 rounded-xl px-3 py-2 transition-colors duration-700 ${isHighlighted ? 'bg-[#00e5cc08] border border-[#00e5cc22]' : ''}`}
+      className={`space-y-3 rounded-xl px-3 py-2 transition-colors duration-700 ${
+        isHighlighted ? 'bg-[#00e5cc08] border border-[#00e5cc22]' : ''
+      }`}
     >
+      {/* Top-level comment */}
       <div className="flex gap-3">
         <div className="w-8 h-8 rounded-full bg-[#1e2040] flex items-center justify-center shrink-0">
           {comment.author.avatar_url ? (
@@ -105,10 +130,10 @@ function CommentItem({ comment, listingId, sellerId, currentUserId, isHighlighte
             <span className="text-xs text-white/40">{timeAgo(comment.created_at)}</span>
           </div>
           <p className="text-sm text-white/70 mt-1 leading-relaxed">{comment.body}</p>
-          {currentUserId && isSeller && !replyOpen && (
+          {currentUserId && !replyOpen && (
             <button
               type="button"
-              onClick={() => setReplyOpen(true)}
+              onClick={() => openReply()}
               className="flex items-center gap-1 mt-1.5 text-xs text-[#00e5cc] hover:text-[#00c8b4] transition-colors"
             >
               <CornerDownRight size={12} />
@@ -118,6 +143,7 @@ function CommentItem({ comment, listingId, sellerId, currentUserId, isHighlighte
         </div>
       </div>
 
+      {/* Replies */}
       {comment.replies?.length > 0 && (
         <div className="ml-11 space-y-3 border-l border-[#1e2040] pl-4">
           {comment.replies.map(reply => (
@@ -140,6 +166,16 @@ function CommentItem({ comment, listingId, sellerId, currentUserId, isHighlighte
                   <span className="text-xs text-white/40">{timeAgo(reply.created_at)}</span>
                 </div>
                 <p className="text-sm text-white/70 mt-1 leading-relaxed">{reply.body}</p>
+                {currentUserId && !replyOpen && (
+                  <button
+                    type="button"
+                    onClick={() => openReply(reply.author.name)}
+                    className="flex items-center gap-1 mt-1.5 text-xs text-white/40 hover:text-[#00e5cc] transition-colors"
+                  >
+                    <CornerDownRight size={11} />
+                    Responder
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -150,6 +186,7 @@ function CommentItem({ comment, listingId, sellerId, currentUserId, isHighlighte
         <ReplyBox
           listingId={listingId}
           parentId={comment.id}
+          initialBody={replyInitialBody}
           onSubmit={reply => { onReplyAdded(comment.id, reply); setReplyOpen(false) }}
           onCancel={() => setReplyOpen(false)}
         />
@@ -192,7 +229,11 @@ export function CommentsSection({ listingId, sellerId }: CommentsSectionProps) {
 
   function handleReplyAdded(parentId: string, reply: Comment) {
     setComments(prev =>
-      prev.map(c => c.id === parentId ? { ...c, replies: [...(c.replies ?? []), reply as Comment & { replies: never[] }] } : c)
+      prev.map(c =>
+        c.id === parentId
+          ? { ...c, replies: [...(c.replies ?? []), reply as Comment & { replies: never[] }] }
+          : c
+      )
     )
   }
 
@@ -200,7 +241,9 @@ export function CommentsSection({ listingId, sellerId }: CommentsSectionProps) {
     <div className="mt-10">
       <h2 className="text-base font-semibold text-[#e8e8f4] mb-5">
         Perguntas e comentários
-        {comments.length > 0 && <span className="ml-2 text-sm text-white/40 font-normal">({comments.length})</span>}
+        {comments.length > 0 && (
+          <span className="ml-2 text-sm text-white/40 font-normal">({comments.length})</span>
+        )}
       </h2>
 
       {currentUser ? (

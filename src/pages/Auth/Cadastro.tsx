@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Car, Eye, EyeOff, ArrowLeft } from 'lucide-react'
+import { Car, Eye, EyeOff, ArrowLeft, Loader2 } from 'lucide-react'
 import { authService } from '../../services/api'
 
 function maskCPF(v: string) {
@@ -16,12 +16,40 @@ function maskPhone(v: string) {
     .replace(/(\d{5})(\d{1,4})$/, '$1-$2')
 }
 
+function maskCEP(v: string) {
+  return v.replace(/\D/g, '').slice(0, 8).replace(/(\d{5})(\d{1,3})$/, '$1-$2')
+}
+
+const STATES = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
+
 export default function Cadastro() {
-  const [form, setForm] = useState({ name: '', email: '', password: '', cpf: '', phone: '' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', cpf: '', phone: '', cep: '', state: '', city: '' })
   const [showPass, setShowPass] = useState(false)
+  const [showConfirmPass, setShowConfirmPass] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [cepLoading, setCepLoading] = useState(false)
+  const [cepError, setCepError] = useState('')
   const [error, setError] = useState('')
   const navigate = useNavigate()
+
+  async function handleCepChange(raw: string) {
+    const masked = maskCEP(raw)
+    set('cep', masked)
+    setCepError('')
+    const digits = masked.replace(/\D/g, '')
+    if (digits.length !== 8) return
+    setCepLoading(true)
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`)
+      const data = await res.json()
+      if (data.erro) { setCepError('CEP não encontrado.'); return }
+      setForm(prev => ({ ...prev, city: data.localidade ?? '', state: data.uf ?? '' }))
+    } catch {
+      setCepError('Erro ao buscar o CEP.')
+    } finally {
+      setCepLoading(false)
+    }
+  }
 
   function set(field: keyof typeof form, value: string) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -29,6 +57,10 @@ export default function Cadastro() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (form.password !== form.confirmPassword) {
+      setError('As senhas não coincidem.')
+      return
+    }
     setError('')
     setLoading(true)
     try {
@@ -38,6 +70,9 @@ export default function Cadastro() {
         password: form.password,
         cpf: form.cpf.replace(/\D/g, ''),
         phone: form.phone.replace(/\D/g, ''),
+        cep: form.cep.replace(/\D/g, '') || undefined,
+        state: form.state || undefined,
+        city: form.city || undefined,
       })
       navigate('/login')
     } catch (err: any) {
@@ -130,6 +165,51 @@ export default function Cadastro() {
           </div>
 
           <div>
+            <label htmlFor="cad-cep" className="block text-xs font-medium text-white/60 mb-1.5">CEP</label>
+            <div className="relative">
+              <input
+                id="cad-cep"
+                type="text"
+                value={form.cep}
+                onChange={e => handleCepChange(e.target.value)}
+                inputMode="numeric"
+                placeholder="00000-000"
+                className={`${inputClass} pr-8`}
+              />
+              {cepLoading && (
+                <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 animate-spin" />
+              )}
+            </div>
+            {cepError && <p className="text-xs text-red-400 mt-1">{cepError}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="cad-state" className="block text-xs font-medium text-white/60 mb-1.5">Estado</label>
+              <select
+                id="cad-state"
+                value={form.state}
+                onChange={e => { set('state', e.target.value); if (!e.target.value) set('city', '') }}
+                className={`${inputClass} appearance-none`}
+              >
+                <option value="">UF</option>
+                {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="cad-city" className="block text-xs font-medium text-white/60 mb-1.5">Cidade</label>
+              <input
+                id="cad-city"
+                type="text"
+                value={form.city}
+                onChange={e => set('city', e.target.value)}
+                placeholder="Sua cidade"
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          <div>
             <label htmlFor="cad-password" className="block text-xs font-medium text-white/60 mb-1.5">Senha</label>
             <div className="relative">
               <input
@@ -149,6 +229,29 @@ export default function Cadastro() {
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-[#e8e8f4] transition-colors"
               >
                 {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="cad-confirm-password" className="block text-xs font-medium text-white/60 mb-1.5">Confirmar senha</label>
+            <div className="relative">
+              <input
+                id="cad-confirm-password"
+                type={showConfirmPass ? 'text' : 'password'}
+                value={form.confirmPassword}
+                onChange={e => set('confirmPassword', e.target.value)}
+                required
+                autoComplete="new-password"
+                placeholder="Repita a senha"
+                className={`${inputClass} pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPass(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-[#e8e8f4] transition-colors"
+              >
+                {showConfirmPass ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>

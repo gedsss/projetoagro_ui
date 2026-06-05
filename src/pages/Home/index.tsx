@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, ArrowRight, Shield, Zap, Star } from 'lucide-react'
+import { ArrowRight, Shield, Zap, Star } from 'lucide-react'
 import { CarCard } from '../../components/ui/CarCard'
+import { BrandSearchInput } from '../../components/ui/BrandSearchInput'
 import { listingsService } from '../../services/api'
 import type { Listing } from '../../types/api'
 import imgSUV from '../../assets/categories/CRETA.png'
@@ -14,12 +15,12 @@ import imgVan from '../../assets/categories/VAN.png'
 const heroVideo = '/hero.mp4'
 
 const categories = [
-  { label: 'SUVs', value: 'suvs', img: imgSUV },
-  { label: 'Sedans', value: 'sedans', img: imgSedan },
-  { label: 'Pickups', value: 'pickups', img: imgPickup },
-  { label: 'Motos', value: 'motos', img: imgMoto },
-  { label: 'Coupés', value: 'coupes', img: imgCoupe },
-  { label: 'Utilitários', value: 'utilitarios', img: imgVan },
+  { label: 'SUVs', value: 'SUVS', img: imgSUV },
+  { label: 'Sedans', value: 'SEDANS', img: imgSedan },
+  { label: 'Pickups', value: 'PICKUPS', img: imgPickup },
+  { label: 'Motos', value: 'MOTOS', img: imgMoto },
+  { label: 'Coupés', value: 'CLASSICOS', img: imgCoupe },
+  { label: 'Utilitários', value: 'VANS', img: imgVan },
 ]
 
 const features = [
@@ -41,23 +42,20 @@ const features = [
 ]
 
 export default function Home() {
-  const [query, setQuery] = useState('')
   const [featured, setFeatured] = useState<Listing[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
     listingsService.getFeatured()
-      .then(r => setFeatured(r.data.data))
+      .then(r => {
+        const raw = r.data as any
+        const data = raw?.data?.data ?? raw?.data ?? []
+        setFeatured(Array.isArray(data) ? data : [])
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
-
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    if (query.trim()) navigate(`/anuncios?q=${encodeURIComponent(query.trim())}`)
-    else navigate('/anuncios')
-  }
 
   return (
     <div className="min-h-screen">
@@ -94,24 +92,12 @@ export default function Home() {
             Milhares de veículos verificados. Compare preços, filtre por localização e negocie direto com o vendedor.
           </p>
 
-          <form onSubmit={handleSearch} className="flex gap-2 max-w-xl mx-auto">
-            <div className="relative flex-1">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/60" />
-              <input
-                type="text"
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Marca, modelo, ano..."
-                className="w-full bg-[#000000] border border-[#1e2040] rounded-xl pl-10 pr-4 py-3.5 text-[#e8e8f4] placeholder-[#5a5a7a] focus:border-[#00e5cc55] focus:outline-none transition-colors"
-              />
-            </div>
-            <button
-              type="submit"
-              className="px-6 py-3.5 bg-[#00e5cc] text-[#07080e] font-semibold rounded-xl hover:bg-[#00c8b4] transition-colors whitespace-nowrap"
-            >
-              Buscar
-            </button>
-          </form>
+          <div className="max-w-xl mx-auto">
+            <BrandSearchInput
+              size="md"
+              inputClassName="w-full bg-[#000000] border border-[#1e2040] rounded-xl pl-10 pr-4 py-3.5 text-[#e8e8f4] placeholder-[#5a5a7a] focus:border-[#00e5cc55] focus:outline-none transition-colors"
+            />
+          </div>
         </div>
       </section>
 

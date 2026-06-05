@@ -8,11 +8,36 @@ import {
 import { CarCard } from '../../components/ui/CarCard'
 import { useNotifications } from '../../hooks/useNotifications'
 import { commentsService, listingsService, usersService } from '../../services/api'
+import { fipeService } from '../../services/fipe'
+import type { FipeMarca, FipeModelo, FipeAno } from '../../services/fipe'
 import type { Listing, NotificationItem, User as UserType } from '../../types/api'
 
 const STATES = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
-const CONDITIONS = [{ value: 'novo', label: 'Novo' }, { value: 'seminovo', label: 'Seminovo' }, { value: 'usado', label: 'Usado' }]
-const STATUS_OPTIONS = [{ value: '', label: 'Todos' }, { value: 'ativo', label: 'Ativo' }, { value: 'pausado', label: 'Pausado' }, { value: 'vendido', label: 'Vendido' }]
+const CONDITIONS = [{ value: 'NOVO', label: 'Novo' }, { value: 'SEMINOVO', label: 'Seminovo' }, { value: 'USADO', label: 'Usado' }]
+const STATUS_OPTIONS = [
+  { value: '', label: 'Todos' },
+  { value: 'ATIVO', label: 'Ativo' },
+  { value: 'PAUSADO', label: 'Pausado' },
+  { value: 'VENDIDO', label: 'Vendido' },
+  { value: 'EXPIRADO', label: 'Expirado' },
+  { value: 'REMOVIDO', label: 'Removido' },
+]
+const CATEGORIES = [
+  { value: 'SEDANS', label: 'Sedan' }, { value: 'SUVS', label: 'SUV' },
+  { value: 'PICKUPS', label: 'Pickup' }, { value: 'MOTOS', label: 'Moto' },
+  { value: 'CLASSICOS', label: 'Coupé' }, { value: 'VANS', label: 'Van / Utilitário' },
+  { value: 'CAMINHOES', label: 'Caminhão' }, { value: 'OUTROS', label: 'Outros' },
+]
+const FUELS = [
+  { value: 'FLEX', label: 'Flex' }, { value: 'GASOLINA', label: 'Gasolina' },
+  { value: 'ETANOL', label: 'Etanol' }, { value: 'DIESEL', label: 'Diesel' },
+  { value: 'ELETRICO', label: 'Elétrico' }, { value: 'HIBRIDO', label: 'Híbrido' },
+]
+const TRANSMISSIONS = [
+  { value: 'MANUAL', label: 'Manual' }, { value: 'AUTOMATICO', label: 'Automático' },
+  { value: 'CVT', label: 'CVT' }, { value: 'AUTOMATIZADO', label: 'Automatizado' },
+]
+const COLORS = ['Branco','Preto','Prata','Cinza','Vermelho','Azul','Verde','Amarelo','Laranja','Bege','Marrom','Roxo','Dourado']
 
 function getTokenId(): string | null {
   const token = localStorage.getItem('token')
@@ -62,11 +87,44 @@ export default function Perfil() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
 
-  // Listing filters
-  const [statusFilter, setStatusFilter] = useState('')
-  const [conditionFilter, setConditionFilter] = useState('')
-  const [stateFilter, setStateFilter] = useState('')
+  // Boost modal
+  const [boostListing, setBoostListing] = useState<{ id: string; title: string } | null>(null)
+  const [boostAmount, setBoostAmount] = useState('')
+  const [boostPayment, setBoostPayment] = useState('')
+
   const [orderFilter, setOrderFilter] = useState('recente')
+
+  type LF = {
+    status: string; condition: string; state: string; city: string
+    brand: string; model: string; year: number | undefined
+    category: string; fuel: string; transmission: string
+    doors: number | undefined; color: string
+    minEngineCC: number | undefined; maxEngineCC: number | undefined
+    minPrice: number | undefined; maxPrice: number | undefined
+    maxKm: number | undefined
+    bulletProof: boolean | undefined; auction: boolean | undefined
+  }
+  const EMPTY_LF: LF = {
+    status: '', condition: '', state: '', city: '', brand: '', model: '',
+    year: undefined, category: '', fuel: '', transmission: '',
+    doors: undefined, color: '', minEngineCC: undefined, maxEngineCC: undefined,
+    minPrice: undefined, maxPrice: undefined, maxKm: undefined,
+    bulletProof: undefined, auction: undefined,
+  }
+  const [appliedFilters, setAppliedFilters] = useState<LF>({ ...EMPTY_LF })
+  const [pending, setPending] = useState<LF>({ ...EMPTY_LF })
+  function setPF<K extends keyof LF>(key: K, value: LF[K]) {
+    setPending(p => ({ ...p, [key]: value }))
+  }
+
+  // FIPE cascade for filter panel
+  const [fipeMarcas, setFipeMarcas] = useState<FipeMarca[]>([])
+  const [fipeModelos, setFipeModelos] = useState<FipeModelo[]>([])
+  const [fipeAnos, setFipeAnos] = useState<FipeAno[]>([])
+  const [fipeCodMarca, setFipeCodMarca] = useState('')
+  const [fipeCodModelo, setFipeCodModelo] = useState('')
+  const [fipeCodAno, setFipeCodAno] = useState('')
+  const [fipeLoading, setFipeLoading] = useState(false)
 
   // Notifications
   const [notifs, setNotifs] = useState<NotificationItem[]>([])
@@ -87,6 +145,11 @@ export default function Perfil() {
   })
 
   useEffect(() => {
+    const p = searchParams.get('tab')
+    if (p === 'notifications' || p === 'listings' || p === 'edit') setTab(p)
+  }, [searchParams])
+
+  useEffect(() => {
     usersService.getMe()
       .then(r => {
         const u = r.data.data
@@ -104,7 +167,11 @@ export default function Perfil() {
     if (!id) return
     setListingsLoading(true)
     listingsService.getByUser(id)
-      .then(r => setListings(r.data.data ?? []))
+      .then(r => {
+        const raw = r.data as any
+        const data = raw?.data?.data ?? raw?.data ?? []
+        setListings(Array.isArray(data) ? data : [])
+      })
       .catch(() => setListings([]))
       .finally(() => setListingsLoading(false))
   }, [tab])
@@ -184,24 +251,90 @@ export default function Perfil() {
     setDeleteId(null)
   }
 
-  // Filter + sort listings
-  const filteredListings = listings
-    .filter(l => !statusFilter || l.status === statusFilter)
-    .filter(l => !conditionFilter || l.condition === conditionFilter)
-    .filter(l => !stateFilter || l.state === stateFilter)
+  // Load FIPE marcas once
+  useEffect(() => {
+    fipeService.getMarcas('carros').then(setFipeMarcas).catch(() => {})
+  }, [])
+
+  function handleMarcaChange(codMarca: string) {
+    const marca = fipeMarcas.find(m => m.codigo === codMarca)
+    setFipeCodMarca(codMarca)
+    setFipeCodModelo('')
+    setFipeCodAno('')
+    setFipeModelos([])
+    setFipeAnos([])
+    setPending(p => ({ ...p, brand: marca?.nome || '', model: '', year: undefined }))
+    if (!codMarca) return
+    setFipeLoading(true)
+    fipeService.getModelos('carros', codMarca).then(setFipeModelos).catch(() => {}).finally(() => setFipeLoading(false))
+  }
+
+  function handleModeloChange(codModelo: string) {
+    const modelo = fipeModelos.find(m => String(m.codigo) === codModelo)
+    setFipeCodModelo(codModelo)
+    setFipeCodAno('')
+    setFipeAnos([])
+    setPending(p => ({ ...p, model: modelo?.nome || '', year: undefined }))
+    if (!codModelo) return
+    setFipeLoading(true)
+    fipeService.getAnos('carros', fipeCodMarca, codModelo).then(setFipeAnos).catch(() => {}).finally(() => setFipeLoading(false))
+  }
+
+  function handleAnoChange(codAno: string) {
+    const ano = fipeAnos.find(a => a.codigo === codAno)
+    setFipeCodAno(codAno)
+    setPending(p => ({ ...p, year: ano ? parseInt(ano.nome, 10) : undefined }))
+  }
+
+  // Filter + sort listings (client-side)
+  const af = appliedFilters
+  const filteredListings = (Array.isArray(listings) ? listings : [])
+    .filter(l => !af.status || l.status === af.status)
+    .filter(l => !af.category || l.category === af.category)
+    .filter(l => !af.condition || l.condition === af.condition)
+    .filter(l => !af.state || l.state === af.state)
+    .filter(l => !af.city || l.city?.toLowerCase().includes(af.city.toLowerCase()))
+    .filter(l => !af.brand || l.brand?.toLowerCase().includes(af.brand.toLowerCase()))
+    .filter(l => !af.model || l.model?.toLowerCase().includes(af.model.toLowerCase()))
+    .filter(l => !af.year || l.year_model === af.year)
+    .filter(l => !af.fuel || l.fuel === af.fuel)
+    .filter(l => !af.transmission || l.transmission === af.transmission)
+    .filter(l => !af.doors || l.doors === af.doors)
+    .filter(l => !af.color || l.color?.toLowerCase().includes(af.color.toLowerCase()))
+    .filter(l => af.minEngineCC === undefined || (l.engine_cc ?? 0) >= af.minEngineCC)
+    .filter(l => af.maxEngineCC === undefined || (l.engine_cc ?? Infinity) <= af.maxEngineCC)
+    .filter(l => af.minPrice === undefined || Number(l.price) >= af.minPrice)
+    .filter(l => af.maxPrice === undefined || Number(l.price) <= af.maxPrice)
+    .filter(l => af.maxKm === undefined || (l.km ?? 0) <= af.maxKm)
+    .filter(l => af.bulletProof === undefined || l.bullet_proof === af.bulletProof)
+    .filter(l => af.auction === undefined || l.auction === af.auction)
     .sort((a, b) => {
       if (orderFilter === 'menor_preco') return Number(a.price) - Number(b.price)
       if (orderFilter === 'maior_preco') return Number(b.price) - Number(a.price)
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
 
-  const activeFilterCount = [statusFilter, conditionFilter, stateFilter].filter(Boolean).length
+  const activeFilterCount = [
+    af.status, af.category, af.condition, af.state, af.city,
+    af.brand, af.model, af.year, af.fuel, af.transmission,
+    af.doors, af.color, af.minEngineCC, af.maxEngineCC,
+    af.minPrice, af.maxPrice, af.maxKm, af.bulletProof, af.auction,
+  ].filter(v => v !== undefined && v !== null && v !== '').length
+
+  function applyListingFilters() {
+    setAppliedFilters({ ...pending })
+    setSidebarOpen(false)
+  }
 
   function clearFilters() {
-    setStatusFilter('')
-    setConditionFilter('')
-    setStateFilter('')
+    setAppliedFilters({ ...EMPTY_LF })
+    setPending({ ...EMPTY_LF })
     setOrderFilter('recente')
+    setFipeCodMarca('')
+    setFipeCodModelo('')
+    setFipeCodAno('')
+    setFipeModelos([])
+    setFipeAnos([])
   }
 
   if (loading) {
@@ -229,47 +362,217 @@ export default function Perfil() {
     { key: 'edit', label: 'Editar Perfil', icon: Edit3 },
   ]
 
-  function FilterPanel() {
-    return (
-      <div className="space-y-6">
-        <div>
-          <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Status</p>
-          <div className="space-y-1.5">
-            {STATUS_OPTIONS.map(s => (
-              <label key={s.value} htmlFor={`status-${s.value}`} className="flex items-center gap-2 cursor-pointer group">
-                <input id={`status-${s.value}`} type="radio" name="status" checked={statusFilter === s.value} onChange={() => setStatusFilter(s.value)} className="accent-[#00e5cc]" />
-                <span className="text-sm text-white/60 group-hover:text-[#e8e8f4] transition-colors">{s.label}</span>
-              </label>
-            ))}
-          </div>
+  const selectCls = "w-full bg-[#000000] border border-[#1e2040] rounded-lg px-3 py-2 text-sm text-[#e8e8f4] focus:border-[#00e5cc55] focus:outline-none appearance-none"
+  const inputCls = "w-full bg-[#000000] border border-[#1e2040] rounded-lg px-3 py-2 text-sm text-[#e8e8f4] focus:border-[#00e5cc55] focus:outline-none"
+
+  const filterPanel = (
+    <div className="space-y-6">
+
+      {/* Status */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Status</p>
+        <div className="space-y-1.5">
+          {STATUS_OPTIONS.map(s => (
+            <label key={s.value} htmlFor={`status-${s.value}`} className="flex items-center gap-2 cursor-pointer group">
+              <input id={`status-${s.value}`} type="radio" name="status" checked={pending.status === s.value} onChange={() => setPF('status', s.value)} className="accent-[#00e5cc]" />
+              <span className="text-sm text-white/60 group-hover:text-[#e8e8f4] transition-colors">{s.label}</span>
+            </label>
+          ))}
         </div>
-        <div>
-          <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Condição</p>
-          <div className="space-y-1.5">
-            {CONDITIONS.map(c => (
-              <label key={c.value} htmlFor={`cond-${c.value}`} className="flex items-center gap-2 cursor-pointer group">
-                <input id={`cond-${c.value}`} type="radio" name="condition" checked={conditionFilter === c.value} onChange={() => setConditionFilter(c.value)} className="accent-[#00e5cc]" />
-                <span className="text-sm text-white/60 group-hover:text-[#e8e8f4] transition-colors">{c.label}</span>
-              </label>
-            ))}
-            {conditionFilter && <button type="button" onClick={() => setConditionFilter('')} className="text-xs text-[#00e5cc] mt-1">Limpar</button>}
-          </div>
+      </div>
+
+      {/* Categoria */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Categoria</p>
+        <div className="flex flex-wrap gap-1.5">
+          {CATEGORIES.map(c => (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => setPF('category', pending.category === c.value ? '' : c.value)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                pending.category === c.value
+                  ? 'bg-[#00e5cc] text-[#07080e] border-[#00e5cc]'
+                  : 'border-[#1e2040] text-white/60 hover:text-[#e8e8f4] hover:border-[#2e3060]'
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
         </div>
+      </div>
+
+      {/* Marca / Modelo / Ano via FIPE */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Marca</p>
+        <select value={fipeCodMarca} onChange={e => handleMarcaChange(e.target.value)} disabled={fipeMarcas.length === 0} className={selectCls}>
+          <option value="">Todas as marcas</option>
+          {fipeMarcas.map(m => <option key={m.codigo} value={m.codigo}>{m.nome}</option>)}
+        </select>
+      </div>
+
+      {fipeCodMarca && (
         <div>
-          <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Estado</p>
-          <select value={stateFilter} onChange={e => setStateFilter(e.target.value)} className="w-full bg-[#000000] border border-[#1e2040] rounded-lg px-3 py-2 text-sm text-[#e8e8f4] focus:border-[#00e5cc55] focus:outline-none">
-            <option value="">Todos</option>
-            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Modelo</p>
+          <select value={fipeCodModelo} onChange={e => handleModeloChange(e.target.value)} disabled={fipeLoading || fipeModelos.length === 0} className={`${selectCls} disabled:opacity-50`}>
+            <option value="">Todos os modelos</option>
+            {fipeModelos.map(m => <option key={m.codigo} value={String(m.codigo)}>{m.nome}</option>)}
           </select>
         </div>
+      )}
+
+      {fipeCodModelo && (
+        <div>
+          <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Versão / Ano</p>
+          <select value={fipeCodAno} onChange={e => handleAnoChange(e.target.value)} disabled={fipeLoading || fipeAnos.length === 0} className={`${selectCls} disabled:opacity-50`}>
+            <option value="">Todas as versões</option>
+            {fipeAnos.map(a => <option key={a.codigo} value={a.codigo}>{a.nome}</option>)}
+          </select>
+        </div>
+      )}
+
+      {/* Estado + Cidade */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Estado</p>
+        <select value={pending.state} onChange={e => { setPF('state', e.target.value); if (!e.target.value) setPF('city', '') }} className={selectCls}>
+          <option value="">Todos</option>
+          {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      {pending.state && (
+        <div>
+          <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Cidade</p>
+          <input type="text" placeholder="Ex: São Paulo" value={pending.city} onChange={e => setPF('city', e.target.value)} className={inputCls} />
+        </div>
+      )}
+
+      {/* Condição */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Condição</p>
+        <div className="space-y-1.5">
+          {CONDITIONS.map(c => (
+            <label key={c.value} htmlFor={`cond-${c.value}`} className="flex items-center gap-2 cursor-pointer group">
+              <input id={`cond-${c.value}`} type="radio" name="condition" checked={pending.condition === c.value} onChange={() => setPF('condition', c.value)} className="accent-[#00e5cc]" />
+              <span className="text-sm text-white/60 group-hover:text-[#e8e8f4] transition-colors">{c.label}</span>
+            </label>
+          ))}
+          {pending.condition && <button type="button" onClick={() => setPF('condition', '')} className="text-xs text-[#00e5cc] mt-1">Limpar</button>}
+        </div>
+      </div>
+
+      {/* Combustível */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Combustível</p>
+        <div className="space-y-1.5">
+          {FUELS.map(f => (
+            <label key={f.value} className="flex items-center gap-2 cursor-pointer group">
+              <input type="radio" name="fuel" value={f.value} checked={pending.fuel === f.value} onChange={() => setPF('fuel', f.value)} className="accent-[#00e5cc]" />
+              <span className="text-sm text-white/60 group-hover:text-[#e8e8f4] transition-colors">{f.label}</span>
+            </label>
+          ))}
+          {pending.fuel && <button type="button" onClick={() => setPF('fuel', '')} className="text-xs text-[#00e5cc] mt-1">Limpar</button>}
+        </div>
+      </div>
+
+      {/* Câmbio */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Câmbio</p>
+        <div className="space-y-1.5">
+          {TRANSMISSIONS.map(t => (
+            <label key={t.value} className="flex items-center gap-2 cursor-pointer group">
+              <input type="radio" name="transmission" value={t.value} checked={pending.transmission === t.value} onChange={() => setPF('transmission', t.value)} className="accent-[#00e5cc]" />
+              <span className="text-sm text-white/60 group-hover:text-[#e8e8f4] transition-colors">{t.label}</span>
+            </label>
+          ))}
+          {pending.transmission && <button type="button" onClick={() => setPF('transmission', '')} className="text-xs text-[#00e5cc] mt-1">Limpar</button>}
+        </div>
+      </div>
+
+      {/* Portas */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Portas</p>
+        <div className="flex gap-2">
+          {[2, 3, 4, 5].map(n => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setPF('doors', pending.doors === n ? undefined : n)}
+              className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                pending.doors === n
+                  ? 'bg-[#00e5cc] text-[#07080e] border-[#00e5cc]'
+                  : 'border-[#1e2040] text-white/60 hover:text-[#e8e8f4] hover:border-[#2e3060]'
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Cor */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Cor</p>
+        <select value={pending.color} onChange={e => setPF('color', e.target.value)} className={selectCls}>
+          <option value="">Todas</option>
+          {COLORS.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      {/* Cavalos / Cilindradas */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+          {pending.category === 'MOTOS' ? 'Cilindradas (cc)' : 'Cavalos (cv)'}
+        </p>
+        <div className="flex gap-2">
+          <input type="number" placeholder="Mín" value={pending.minEngineCC ?? ''} onChange={e => setPF('minEngineCC', e.target.value ? Number(e.target.value) : undefined)} className={inputCls} />
+          <input type="number" placeholder="Máx" value={pending.maxEngineCC ?? ''} onChange={e => setPF('maxEngineCC', e.target.value ? Number(e.target.value) : undefined)} className={inputCls} />
+        </div>
+      </div>
+
+      {/* Valor */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Valor (R$)</p>
+        <div className="flex gap-2">
+          <input type="number" placeholder="Mín" value={pending.minPrice ?? ''} onChange={e => setPF('minPrice', e.target.value ? Number(e.target.value) : undefined)} className={inputCls} />
+          <input type="number" placeholder="Máx" value={pending.maxPrice ?? ''} onChange={e => setPF('maxPrice', e.target.value ? Number(e.target.value) : undefined)} className={inputCls} />
+        </div>
+      </div>
+
+      {/* KM */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">KM máximo</p>
+        <input type="number" placeholder="Ex: 50000" value={pending.maxKm ?? ''} onChange={e => setPF('maxKm', e.target.value ? Number(e.target.value) : undefined)} className={inputCls} />
+      </div>
+
+      {/* Características Especiais */}
+      <div>
+        <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Características Especiais</p>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input type="checkbox" checked={pending.bulletProof === true} onChange={e => setPF('bulletProof', e.target.checked ? true : undefined)} className="accent-[#00e5cc] w-4 h-4" />
+            <span className="text-sm text-white/60 group-hover:text-[#e8e8f4] transition-colors">Blindado</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input type="checkbox" checked={pending.auction === true} onChange={e => setPF('auction', e.target.checked ? true : undefined)} className="accent-[#00e5cc] w-4 h-4" />
+            <span className="text-sm text-white/60 group-hover:text-[#e8e8f4] transition-colors">Leilão</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Ações */}
+      <div className="space-y-2 pt-1">
+        <button type="button" onClick={applyListingFilters} className="w-full py-2.5 text-sm font-semibold bg-[#00e5cc] text-[#07080e] rounded-lg hover:bg-[#00cdb8] transition-colors">
+          Aplicar filtros
+        </button>
         {activeFilterCount > 0 && (
           <button type="button" onClick={clearFilters} className="w-full py-2 text-sm text-red-400 border border-red-400/20 rounded-lg hover:bg-red-400/10 transition-colors">
-            Limpar filtros ({activeFilterCount})
+            Limpar tudo ({activeFilterCount})
           </button>
         )}
       </div>
-    )
-  }
+    </div>
+  )
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-28 pb-20">
@@ -392,11 +695,12 @@ export default function Perfil() {
             </div>
           </div>
 
+
           <div className="flex gap-8">
             <aside className="hidden lg:block w-52 shrink-0">
               <div className="sticky top-24 rounded-2xl border border-[#1e2040] bg-[#000000] p-5">
                 <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-5">Filtros</p>
-                <FilterPanel />
+                {filterPanel}
               </div>
             </aside>
 
@@ -408,7 +712,7 @@ export default function Perfil() {
                     <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Filtros</p>
                     <button type="button" onClick={() => setSidebarOpen(false)} className="text-white/60 hover:text-[#e8e8f4]"><X size={18} /></button>
                   </div>
-                  <FilterPanel />
+                  {filterPanel}
                 </div>
               </div>
             )}
@@ -437,14 +741,24 @@ export default function Perfil() {
                   {filteredListings.map(listing => (
                     <div key={listing.id} className="relative group">
                       <CarCard listing={listing} featured={listing.featured} />
-                      <button
-                        type="button"
-                        onClick={() => setDeleteId(listing.id)}
-                        className="absolute top-3 left-3 z-10 p-1.5 rounded-lg bg-black/60 text-white/60 hover:text-red-400 hover:bg-black/80 opacity-0 group-hover:opacity-100 transition-all"
-                        title="Excluir"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="absolute top-3 left-3 z-10 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                        <button
+                          type="button"
+                          onClick={() => { setBoostListing({ id: listing.id, title: listing.title }); setBoostAmount(''); setBoostPayment('') }}
+                          className="p-1.5 rounded-lg bg-black/60 text-[#7b5cf0] hover:bg-black/80 hover:text-[#9d7ef0] transition-colors"
+                          title="Melhorar anúncio"
+                        >
+                          ⚡
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteId(listing.id)}
+                          className="p-1.5 rounded-lg bg-black/60 text-white/60 hover:text-red-400 hover:bg-black/80 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -465,6 +779,108 @@ export default function Perfil() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Boost Modal ── */}
+      {boostListing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-[#0c0e1a] border border-[#1e2040] rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e2040]">
+              <div>
+                <h2 className="text-base font-bold text-[#e8e8f4]">⚡ Melhorar Anúncio</h2>
+                <p className="text-xs text-white/40 mt-0.5 truncate max-w-65">{boostListing.title}</p>
+              </div>
+              <button type="button" onClick={() => setBoostListing(null)} className="p-1.5 text-white/40 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              {/* Como funciona */}
+              <div className="p-4 rounded-xl bg-[#7b5cf0]/10 border border-[#7b5cf0]/25 space-y-2">
+                <p className="text-xs font-semibold text-[#7b5cf0] uppercase tracking-wider">Como funciona</p>
+                <p className="text-sm text-white/70 leading-relaxed">
+                  Seu anúncio aparece em <span className="text-[#e8e8f4] font-medium">destaque na página inicial</span> para todos os visitantes.
+                  Quanto maior o valor investido, mais à frente seu anúncio aparece em relação a outros em destaque.
+                  O destaque permanece ativo enquanto o investimento estiver vigente.
+                </p>
+              </div>
+
+              {/* Valor */}
+              <div>
+                <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3">Valor a investir</p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {['10', '25', '50', '100'].map(v => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setBoostAmount(v)}
+                      className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
+                        boostAmount === v
+                          ? 'bg-[#7b5cf0] border-[#7b5cf0] text-white'
+                          : 'border-[#1e2040] text-white/60 hover:border-[#7b5cf0]/50 hover:text-white'
+                      }`}
+                    >
+                      R$ {v}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Ou digite outro valor"
+                  value={!['10','25','50','100'].includes(boostAmount) ? boostAmount : ''}
+                  onChange={e => setBoostAmount(e.target.value.replace(/\D/g, ''))}
+                  className="w-full bg-[#07080e] border border-[#1e2040] rounded-xl px-4 py-2.5 text-sm text-[#e8e8f4] placeholder-white/30 focus:border-[#7b5cf0]/50 focus:outline-none transition-colors"
+                />
+              </div>
+
+              {/* Forma de pagamento */}
+              <div>
+                <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3">Forma de pagamento</p>
+                <div className="flex flex-wrap gap-2">
+                  {['PIX', 'Cartão de Crédito', 'Transferência'].map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setBoostPayment(m)}
+                      className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
+                        boostPayment === m
+                          ? 'bg-[#7b5cf0] border-[#7b5cf0] text-white'
+                          : 'border-[#1e2040] text-white/60 hover:border-[#7b5cf0]/50 hover:text-white'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Botão finalizar */}
+              <a
+                href={
+                  boostAmount && boostPayment
+                    ? `https://wa.me/5599999999999?text=${encodeURIComponent(`Olá! Gostaria de destacar meu anúncio no AutoFácil.\n\nAnúncio: ${boostListing.title}\nID: ${boostListing.id}\nValor: R$ ${boostAmount}\nForma de pagamento: ${boostPayment}\n\nPode me ajudar?`)}`
+                    : undefined
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => { if (!boostAmount || !boostPayment) e.preventDefault() }}
+                className={`mt-1 w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center transition-colors ${
+                  boostAmount && boostPayment
+                    ? 'bg-[#7b5cf0] hover:bg-[#6a4ee0] text-white'
+                    : 'bg-[#1e2040] text-white/30 cursor-not-allowed'
+                }`}
+              >
+                Finalizar Pagamento via WhatsApp
+              </a>
+              {(!boostAmount || !boostPayment) && (
+                <p className="text-center text-xs text-white/30">Selecione o valor e a forma de pagamento</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -557,7 +973,14 @@ export default function Perfil() {
                         </span>
                         <span className="text-xs text-white/40 shrink-0">{timeAgo(notif.created_at)}</span>
                       </div>
-                      <p className="text-xs text-white/40 truncate mb-1">{notif.listing_title}</p>
+                      <p className="text-xs text-white/40 truncate mb-1">
+                        {notif.notification_type === 'reply'
+                          ? 'Respondeu seu comentário'
+                          : notif.listing_title}
+                      </p>
+                      {notif.notification_type === 'reply' && notif.parent_body && (
+                        <p className="text-xs text-white/25 italic truncate mb-1">"{notif.parent_body}"</p>
+                      )}
                       <p className={`text-sm line-clamp-2 leading-relaxed ${!notif.is_read ? 'text-white/70' : 'text-white/50'}`}>
                         {notif.body}
                       </p>

@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Bell, Car, Heart, LogOut, Menu, Plus, Search, User, X } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Bell, Car, LogOut, Menu, Moon, Plus, Sun, User, X } from 'lucide-react'
 
+import { useTheme } from '../../contexts/ThemeContext'
 import { useNotifications } from '../../hooks/useNotifications'
 import { NotificationDropdown } from '../ui/NotificationDropdown'
+import { BrandSearchInput } from '../ui/BrandSearchInput'
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [bellOpen, setBellOpen] = useState(false)
-  const [query, setQuery] = useState('')
   const navigate = useNavigate()
+  const { theme, toggle } = useTheme()
+  const { pathname } = useLocation()
+  const isHome = pathname === '/'
   const token = localStorage.getItem('token')
   const close = () => setMenuOpen(false)
   const bellRef = useRef<HTMLDivElement>(null)
@@ -21,11 +25,6 @@ export function Navbar() {
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
-
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    if (query.trim()) navigate(`/anuncios?q=${encodeURIComponent(query.trim())}`)
-  }
 
   function handleLogout() {
     localStorage.removeItem('token')
@@ -51,24 +50,26 @@ export function Navbar() {
           </Link>
 
           {/* Search bar — desktop */}
-          <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-md mx-6">
-            <div className="relative w-full">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60" />
-              <input
-                type="text"
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Busque por marca, modelo..."
-                className="w-full bg-[#0c0e1a] border border-[#1e2040] rounded-lg pl-9 pr-4 py-2 text-sm text-[#e8e8f4] placeholder-white/30 focus:border-[#00e5cc55] transition-colors"
-              />
-            </div>
-          </form>
+          {!isHome && (
+            <BrandSearchInput
+              wrapperClassName="flex-1 max-w-md mx-6"
+              inputClassName="w-full bg-[#0c0e1a] border border-[#1e2040] rounded-lg pl-9 pr-4 py-2 text-sm text-[#e8e8f4] placeholder-white/30 focus:border-[#00e5cc55] transition-colors"
+            />
+          )}
 
           {/* Nav links */}
           <nav className="hidden md:flex items-center gap-1">
             <Link to="/anuncios" className="px-3 py-2 text-sm text-white/60 hover:text-[#e8e8f4] transition-colors">
               Anúncios
             </Link>
+            <button
+              type="button"
+              onClick={toggle}
+              className="p-2 text-white/60 hover:text-[#e8e8f4] transition-colors"
+              title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+            >
+              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
 
             {token ? (
               <>
@@ -78,9 +79,6 @@ export function Navbar() {
                 >
                   <Plus size={15} />
                   Criar Anúncio
-                </Link>
-                <Link to="/favoritos" className="p-2 text-white/60 hover:text-[#e8e8f4] transition-colors">
-                  <Heart size={18} />
                 </Link>
                 <Link to="/perfil" className="p-2 text-white/60 hover:text-[#e8e8f4] transition-colors">
                   <User size={18} />
@@ -146,25 +144,25 @@ export function Navbar() {
       {/* Mobile menu */}
       {menuOpen && (
         <div className="md:hidden glass border-t border-white/5 px-4 pb-4 pt-2 space-y-2">
-          <form onSubmit={handleSearch}>
-            <div className="relative">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60" />
-              <input
-                type="text"
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Buscar..."
-                className="w-full bg-[#0c0e1a] border border-[#1e2040] rounded-lg pl-9 pr-4 py-2 text-sm text-[#e8e8f4] placeholder-white/30"
-              />
-            </div>
-          </form>
+          {!isHome && (
+            <BrandSearchInput
+              inputClassName="w-full bg-[#0c0e1a] border border-[#1e2040] rounded-lg pl-9 pr-4 py-2 text-sm text-[#e8e8f4] placeholder-white/30"
+            />
+          )}
           <Link to="/anuncios" onClick={close} className="block py-2 text-sm text-white/60 hover:text-white">Anúncios</Link>
+          <button
+            type="button"
+            onClick={toggle}
+            className="flex items-center gap-2 py-2 text-sm text-white/60 hover:text-white"
+          >
+            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+          </button>
           {token ? (
             <>
               <Link to="/criar-anuncio" onClick={close} className="flex items-center gap-1.5 py-2 text-sm font-medium text-[#00e5cc]">
                 <Plus size={14} />Criar Anúncio
               </Link>
-              <Link to="/favoritos" onClick={close} className="block py-2 text-sm text-white/60 hover:text-white">Favoritos</Link>
               <Link to="/perfil" onClick={close} className="block py-2 text-sm text-white/60 hover:text-white">Perfil</Link>
               <Link
                 to="/perfil?tab=notifications"
